@@ -1,0 +1,2 @@
+# goswag
+Swagger annotations generator
