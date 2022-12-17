@@ -3,6 +3,7 @@ package generator
 import (
 	"fmt"
 	openapi "github.com/go-openapi/spec"
+	"github.com/google/uuid"
 	"reflect"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ func unsignedType(schema *openapi.Schema) *openapi.Schema {
 
 type SchemaGenerator struct {
 	processTypes []reflect.Type
+	cTypes       map[reflect.Type]*openapi.Schema
 }
 
 var simpleTypesMapping = map[reflect.Kind]*openapi.Schema{
@@ -32,17 +34,25 @@ var simpleTypesMapping = map[reflect.Kind]*openapi.Schema{
 	reflect.Int32:   openapi.Int32Property(),
 	reflect.Int64:   openapi.Int64Property(),
 	reflect.Uint:    unsignedType(openapi.Int64Property()),
-	reflect.Uint8:   openapi.Int8Property(),
-	reflect.Uint16:  openapi.Int16Property(),
-	reflect.Uint32:  openapi.Int32Property(),
-	reflect.Uint64:  openapi.Int64Property(),
+	reflect.Uint8:   unsignedType(openapi.Int8Property()),
+	reflect.Uint16:  unsignedType(openapi.Int16Property()),
+	reflect.Uint32:  unsignedType(openapi.Int32Property()),
+	reflect.Uint64:  unsignedType(openapi.Int64Property()),
 	reflect.Float32: openapi.Float32Property(),
 	reflect.Float64: openapi.Float64Property(),
 	reflect.String:  openapi.StringProperty(),
 }
 
 func NewSchemaGenerator() *SchemaGenerator {
-	return &SchemaGenerator{processTypes: make([]reflect.Type, 0)}
+	timeType := reflect.TypeOf(&time.Time{}).Elem()
+	uuidType := reflect.TypeOf(&uuid.UUID{}).Elem()
+	return &SchemaGenerator{
+		processTypes: make([]reflect.Type, 0),
+		cTypes: map[reflect.Type]*openapi.Schema{
+			timeType: openapi.DateTimeProperty(),
+			uuidType: UUIDProperty(),
+		},
+	}
 }
 
 func (gen *SchemaGenerator) GetSchema(paramType reflect.Type) (openapi.Definitions, error) {
@@ -73,36 +83,35 @@ func (gen *SchemaGenerator) processParam(paramType reflect.Type) (*openapi.Schem
 	}
 	switch paramType.Kind() {
 	case reflect.Slice:
+		cType := gen.tryCustomType(paramType)
+		if cType != nil {
+			return cType, nil
+		}
 		pTypeElem := paramType.Elem()
-		pName := paramType.Name()
-		pElemName := pTypeElem.Name()
-		_ = pElemName
-		_ = pName
 		fieldType, additionalDefinition := gen.processParam(pTypeElem)
 		return openapi.ArrayProperty(fieldType), additionalDefinition
 	case reflect.Array:
-		pTypeElem := paramType.Elem()
-		pName := paramType.Name()
-		pElemName := pTypeElem.Name()
-		_ = pElemName
-		if strings.ToLower(pName) == "uuid" {
-			fType := openapi.StringProperty()
-			fType.SchemaProps.Format = "uuid"
-			return fType, nil
+		cType := gen.tryCustomType(paramType)
+		if cType != nil {
+			return cType, nil
 		}
-		fieldType, err := gen.processParam(pTypeElem)
+		fieldType, err := gen.processParam(paramType.Elem())
 		if err != nil {
 			return nil, fmt.Errorf("cannot process array property: %w", err)
 		}
 		return openapi.ArrayProperty(fieldType), nil
 	case reflect.Map:
+		cType := gen.tryCustomType(paramType)
+		if cType != nil {
+			return cType, nil
+		}
 		fieldType, err := gen.processParam(paramType.Elem())
 		if err != nil {
 			return nil, fmt.Errorf("cannot process map property: %w", err)
 		}
 		return openapi.MapProperty(fieldType), nil
 	case reflect.Struct:
-		cType := tryCustomType(paramType)
+		cType := gen.tryCustomType(paramType)
 		if cType != nil {
 			return cType, nil
 		}
@@ -112,21 +121,21 @@ func (gen *SchemaGenerator) processParam(paramType reflect.Type) (*openapi.Schem
 			definitionPrefix + defName,
 		), nil
 	case reflect.Ptr:
-		refVal := reflect.New(paramType).Elem()
-		refElem := refVal.Type().Elem()
-
+		refElem := reflect.New(paramType).Elem().Type().Elem()
+		eName := refElem.Name()
+		_ = eName
 		return gen.processParam(refElem)
-		//case reflect.Interface:
-		//	return &openapi.Schema{
-		//		SchemaProps: openapi.SchemaProps{
-		//			AnyOf: []openapi.Schema{
-		//				*openapi.StringProperty(),
-		//				{SchemaProps: openapi.SchemaProps{Type: []string{"integer"}}},
-		//				{SchemaProps: openapi.SchemaProps{Type: []string{"number"}}},
-		//				*openapi.BoolProperty(),
-		//			}},
-		//		SwaggerSchemaProps: openapi.SwaggerSchemaProps{Example: "any_value"},
-		//	}, nil
+	case reflect.Interface:
+		return &openapi.Schema{
+			SchemaProps: openapi.SchemaProps{
+				AnyOf: []openapi.Schema{
+					*openapi.StringProperty(),
+					{SchemaProps: openapi.SchemaProps{Type: []string{"integer"}}},
+					{SchemaProps: openapi.SchemaProps{Type: []string{"number"}}},
+					*openapi.BoolProperty(),
+				}},
+			SwaggerSchemaProps: openapi.SwaggerSchemaProps{Example: "any value"},
+		}, nil
 	}
 	return nil, nil
 }
@@ -162,12 +171,33 @@ func (gen *SchemaGenerator) processStruct(paramType reflect.Type) (*openapi.Sche
 	return res, nil
 }
 
-func tryCustomType(paramType reflect.Type) *openapi.Schema {
-	var timePtrType = reflect.TypeOf(&time.Time{}).Elem()
-	if paramType == timePtrType {
-		return openapi.DateTimeProperty()
+func (gen *SchemaGenerator) tryCustomType(paramType reflect.Type) *openapi.Schema {
+	cSchema, ok := gen.cTypes[paramType]
+	if ok {
+		return cSchema
 	}
+	if paramType.Kind() != reflect.Struct {
+		return nil
+	}
+	if paramType.NumField() != 1 {
+		return nil
+	}
+	sField := paramType.Field(0)
+	if !sField.Anonymous {
+		return nil
+	}
+	cSchema, ok = gen.cTypes[sField.Type]
+	if ok {
+		return cSchema
+	}
+
 	return nil
+}
+
+func UUIDProperty() *openapi.Schema {
+	fType := openapi.StringProperty()
+	fType.SchemaProps.Format = "uuid"
+	return fType
 }
 
 func getDefinitionName(defType reflect.Type) string {

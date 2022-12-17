@@ -31,23 +31,54 @@ type WithSubPtrStruct struct {
 type WithUUID struct {
 	ID uuid.UUID `json:"id"`
 }
+type EventTime struct {
+	time.Time
+}
+
+type EventFinishTime struct {
+	time.Time
+}
 
 type SpecContainer [2]string
 type RecNumber int8
 type WithContainers struct {
-	Values    []int64            `json:"values"`
-	Mapping   map[string]float64 `json:"mapping"`
-	Container SpecContainer      `json:"container"`
-	RecNums   []RecNumber        `json:"numbers"`
+	Values         []int64            `json:"values"`
+	Mapping        map[string]float64 `json:"mapping"`
+	Container      SpecContainer      `json:"container"`
+	RecNums        []RecNumber        `json:"numbers"`
+	SessionTimes   []time.Time        `json:"session_times"`
+	EvtTimes       []EventTime        `json:"evt_times"`
+	EvtFinishTimes []*EventFinishTime `json:"evt_finish_times"`
 }
-type UserID uuid.UUID
+type UUIDAlias uuid.UUID // Bad idea to make such aliases
 type UserName string
 
 type WithTypeAliases struct {
-	ID       UserID     `json:"id"`
+	ID       UUIDAlias  `json:"id"`
 	Name     UserName   `json:"name"`
 	Started  time.Time  `json:"started"`
 	Finished *time.Time `json:"finished"`
+}
+
+type UserID struct {
+	uuid.UUID
+}
+type GroupID struct {
+	uuid.UUID
+}
+
+type WithEmbeddedTypes struct {
+	ID       UserID           `json:"id"`
+	GroupID  *GroupID         `json:"alter_id"`
+	Targets  []UserID         `json:"targets"`
+	Started  EventTime        `json:"started"`
+	Finished *EventFinishTime `json:"finished"`
+}
+
+type UserNum uint64
+type WithInterface struct {
+	Number UserNum     `json:"number"`
+	Value  interface{} `json:"value"`
 }
 
 func TestGetSchemaSimple(t *testing.T) {
@@ -125,16 +156,18 @@ func TestGetSchemaWithUUID(t *testing.T) {
 	if err != nil {
 		t.Errorf("cannot process WithUUID: %v", err)
 	}
-	if len(defs) != 1 {
-		t.Errorf("for WithUUID want 1 definition, have %d", len(defs))
+	structDef, ok := defs[definitionPrefix+"generator.WithUUID"]
+	if !ok {
+		t.Fatalf("not found expected definition for WithContainers")
 	}
-	for _, schema := range defs {
-		assert.Equal(t, "object", schema.Type[0])
-		assert.Equal(t, 1, len(schema.Properties))
-		for _, prop := range schema.Properties {
-			assert.Equal(t, "string", prop.Type[0])
-			assert.Equal(t, "uuid", prop.Format)
-		}
+	assert.Equal(t, "object", structDef.Type[0])
+	assert.Equal(t, 1, len(structDef.Properties))
+	structProp, ok := structDef.Properties["id"]
+	if !ok {
+		t.Errorf("not found prop for id field")
+	} else {
+		assert.Equal(t, "string", structProp.Type[0])
+		assert.Equal(t, "uuid", structProp.Format)
 	}
 }
 
@@ -183,7 +216,7 @@ func TestGetSchemaWithContainers(t *testing.T) {
 
 	aliasSlice, ok := structDef.Properties["numbers"]
 	if !ok {
-		t.Errorf("not found prop for alice field with alias type")
+		t.Errorf("not found prop for alias field with alias type")
 	} else {
 		assert.Equal(t, "array", aliasSlice.Type[0])
 		aSliceItems := aliasSlice.Items
@@ -191,6 +224,40 @@ func TestGetSchemaWithContainers(t *testing.T) {
 		assert.Equal(t, "integer", aSliceItems.Schema.Type[0])
 		assert.Equal(t, "int8", aSliceItems.Schema.Format)
 	}
+
+	sessionTimes, ok := structDef.Properties["session_times"]
+	if !ok {
+		t.Errorf("not found prop for field with list of time")
+	} else {
+		assert.Equal(t, "array", aliasSlice.Type[0])
+		items := sessionTimes.Items
+		assert.NotNil(t, items)
+		assert.Equal(t, "string", items.Schema.Type[0])
+		assert.Equal(t, "date-time", items.Schema.Format)
+	}
+
+	evtTimes, ok := structDef.Properties["evt_times"]
+	if !ok {
+		t.Errorf("not found prop for field with list of embedded time.Time")
+	} else {
+		assert.Equal(t, "array", evtTimes.Type[0])
+		items := evtTimes.Items
+		assert.NotNil(t, items)
+		assert.Equal(t, "string", items.Schema.Type[0])
+		assert.Equal(t, "date-time", items.Schema.Format)
+	}
+
+	aliasTimeSlicePointers, ok := structDef.Properties["evt_finish_times"]
+	if !ok {
+		t.Errorf("not found prop for field with list of pointers to embedded time.Time")
+	} else {
+		assert.Equal(t, "array", aliasTimeSlicePointers.Type[0])
+		items := aliasTimeSlicePointers.Items
+		assert.NotNil(t, items)
+		assert.Equal(t, "string", items.Schema.Type[0])
+		assert.Equal(t, "date-time", items.Schema.Format)
+	}
+
 }
 
 func TestGetSchemaWithAliases(t *testing.T) {
@@ -199,7 +266,7 @@ func TestGetSchemaWithAliases(t *testing.T) {
 	sGenerator := NewSchemaGenerator()
 	defs, err := sGenerator.GetSchema(sType)
 	if err != nil {
-		t.Errorf("cannot process WithUUID: %v", err)
+		t.Errorf("cannot process WithTypeAliases: %v", err)
 	}
 	if len(defs) != 1 {
 		t.Errorf("for WithTypeAliases want 1 definition, have %d", len(defs))
@@ -221,4 +288,103 @@ func TestGetSchemaWithAliases(t *testing.T) {
 	}
 	assert.Equal(t, "string", nameDef.Type[0])
 
+	startedDef, ok := schema.Properties["started"]
+	if !ok {
+		t.Errorf("field started not found")
+	}
+	assert.Equal(t, "string", startedDef.Type[0])
+	assert.Equal(t, "date-time", startedDef.Format)
+
+	finishedDef, ok := schema.Properties["finished"]
+	if !ok {
+		t.Errorf("field finished not found")
+	}
+	assert.Equal(t, "string", finishedDef.Type[0])
+	assert.Equal(t, "date-time", finishedDef.Format)
+}
+
+func TestGetSchemaWithEmbeddedTypes(t *testing.T) {
+	sVal := WithEmbeddedTypes{}
+	sType := reflect.TypeOf(sVal)
+	sGenerator := NewSchemaGenerator()
+	defs, err := sGenerator.GetSchema(sType)
+	if err != nil {
+		t.Errorf("cannot process WithEmbeddedTypes: %v", err)
+	}
+	if len(defs) != 1 {
+		t.Errorf("for WithTypeAliases want 1 definition, have %d", len(defs))
+	}
+	schema, ok := defs[definitionPrefix+"generator.WithEmbeddedTypes"]
+	if !ok {
+		t.Errorf("definition WithEmbeddedTypes not found")
+	}
+	idDef, ok := schema.Properties["id"]
+	if !ok {
+		t.Errorf("field id not found")
+	} else {
+
+	}
+	assert.Equal(t, "string", idDef.Type[0])
+	assert.Equal(t, "uuid", idDef.Format)
+	alterIDDef, ok := schema.Properties["alter_id"]
+	if !ok {
+		t.Errorf("field name not found")
+	}
+	assert.Equal(t, "string", alterIDDef.Type[0])
+	assert.Equal(t, "uuid", alterIDDef.Format)
+
+	uuidSliceDef, ok := schema.Properties["targets"]
+	if !ok {
+		t.Errorf("field name not found")
+	}
+	assert.Equal(t, "array", uuidSliceDef.Type[0])
+	uuidSliceItems := uuidSliceDef.Items
+	assert.NotNil(t, uuidSliceItems)
+	assert.Equal(t, "string", uuidSliceItems.Schema.Type[0])
+	assert.Equal(t, "uuid", uuidSliceItems.Schema.Format)
+
+	startedDef, ok := schema.Properties["started"]
+	if !ok {
+		t.Errorf("field started not found")
+	}
+	assert.Equal(t, "string", startedDef.Type[0])
+	assert.Equal(t, "date-time", startedDef.Format)
+
+	finishedDef, ok := schema.Properties["finished"]
+	if !ok {
+		t.Errorf("field finished not found")
+	}
+	assert.Equal(t, "string", finishedDef.Type[0])
+	assert.Equal(t, "date-time", finishedDef.Format)
+}
+
+func TestGetSchemaWithInterface(t *testing.T) {
+	sVal := WithInterface{}
+	sType := reflect.TypeOf(sVal)
+	sGenerator := NewSchemaGenerator()
+	defs, err := sGenerator.GetSchema(sType)
+	if err != nil {
+		t.Errorf("cannot process WithInterface: %v", err)
+	}
+	structDef, ok := defs[definitionPrefix+"generator.WithInterface"]
+	if !ok {
+		t.Fatalf("not found expected definition for WithInterface")
+	}
+	assert.Equal(t, "object", structDef.Type[0])
+	assert.Equal(t, 2, len(structDef.Properties))
+	numProp, ok := structDef.Properties["number"]
+	if !ok {
+		t.Errorf("not found prop for id field")
+	} else {
+		assert.Equal(t, "integer", numProp.Type[0])
+		assert.Equal(t, "int64", numProp.Format)
+		assert.NotNil(t, numProp.Minimum)
+		assert.Equal(t, float64(0), *numProp.Minimum)
+	}
+	interfaceProp, ok := structDef.Properties["value"]
+	if !ok {
+		t.Errorf("not found prop for value field tepe interface")
+	} else {
+		assert.Greater(t, 1, len(interfaceProp.Type))
+	}
 }
