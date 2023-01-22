@@ -10,21 +10,21 @@ import (
 )
 
 type SimpleStruct struct {
-	Name         string `json:"name"`
+	Name         string `json:"Name"`
 	private      int
 	NonJSONField uint64 `json:"-"`
 }
 
 type SimpleWithPtr struct {
-	Name *string `json:"name"`
+	Name *string `json:"Name"`
 }
 type WithSubStruct struct {
-	Name string       `json:"name"`
+	Name string       `json:"Name"`
 	Sub  SimpleStruct `json:"sub_val"`
 }
 
 type WithSubPtrStruct struct {
-	Name string        `json:"name"`
+	Name string        `json:"Name"`
 	Sub  *SimpleStruct `json:"sub_val"`
 }
 
@@ -55,7 +55,7 @@ type UserName string
 
 type WithTypeAliases struct {
 	ID       UUIDAlias  `json:"id"`
-	Name     UserName   `json:"name"`
+	Name     UserName   `json:"Name"`
 	Started  time.Time  `json:"started"`
 	Finished *time.Time `json:"finished"`
 }
@@ -128,20 +128,20 @@ func TestGetSchemaWithSubStruct(t *testing.T) {
 			if strings.Contains(name, sName) {
 				assert.Equal(t, 2, len(schema.Properties))
 				for pName, prop := range schema.Properties {
-					if pName == "name" {
+					if pName == "Name" {
 						assert.Equal(t, "string", prop.Type[0])
 					} else if pName == "sub_val" {
 						refStr := prop.Ref.String()
 						assert.True(t, strings.Contains(refStr, "SimpleStruct"))
 					} else {
-						t.Errorf("struct WithSubStruct unexpected field name %s", pName)
+						t.Errorf("struct WithSubStruct unexpected field Name %s", pName)
 					}
 
 				}
 			} else if strings.Contains(name, "SimpleStruct") {
 				assert.Equal(t, 1, len(schema.Properties))
 			} else {
-				t.Errorf("unexpected definition name %s", name)
+				t.Errorf("unexpected definition Name %s", name)
 			}
 
 		}
@@ -282,9 +282,9 @@ func TestGetSchemaWithAliases(t *testing.T) {
 	// With type alias cannot detect uuid
 	assert.Equal(t, "array", idDef.Type[0])
 	assert.Equal(t, "", idDef.Format)
-	nameDef, ok := schema.Properties["name"]
+	nameDef, ok := schema.Properties["Name"]
 	if !ok {
-		t.Errorf("field name not found")
+		t.Errorf("field Name not found")
 	}
 	assert.Equal(t, "string", nameDef.Type[0])
 
@@ -328,14 +328,14 @@ func TestGetSchemaWithEmbeddedTypes(t *testing.T) {
 	assert.Equal(t, "uuid", idDef.Format)
 	alterIDDef, ok := schema.Properties["alter_id"]
 	if !ok {
-		t.Errorf("field name not found")
+		t.Errorf("field Name not found")
 	}
 	assert.Equal(t, "string", alterIDDef.Type[0])
 	assert.Equal(t, "uuid", alterIDDef.Format)
 
 	uuidSliceDef, ok := schema.Properties["targets"]
 	if !ok {
-		t.Errorf("field name not found")
+		t.Errorf("field Name not found")
 	}
 	assert.Equal(t, "array", uuidSliceDef.Type[0])
 	uuidSliceItems := uuidSliceDef.Items
