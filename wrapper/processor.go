@@ -91,11 +91,15 @@ func (g *WrapGroup) callProcessor(path string, handler interface{}, processBody 
 		errInterface := errVal.Interface()
 		var resultErr error = nil
 		if errInterface != nil {
-			resultErr = errInterface.(error)
+			var ok bool
+			resultErr, ok = errInterface.(error)
+			if !ok {
+				return fmt.Errorf("calling %s: callback cannot process error: %v", handlerType.String(), errInterface)
+			}
 		}
 
 		if resultErr != nil {
-			return fmt.Errorf("calling %s: callback returned an error: %w", handlerType.String(), resultErr)
+			return c.JSON(http.StatusInternalServerError, resultErr)
 		}
 
 		if outParamsCount == 2 {

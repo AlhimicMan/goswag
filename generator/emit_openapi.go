@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	openapi "github.com/go-openapi/spec"
@@ -39,25 +40,77 @@ func (s *SwaggerGenerator) EmitOpenAPIDefinition(routesMap map[string]RouteInfo)
 	sw.Definitions = make(map[string]openapi.Schema)
 
 	for path, routeInfo := range routesMap {
+		sParts := strings.Split(path, "~")
+		if len(sParts) != 2 {
+			return openapi.Swagger{}, fmt.Errorf("invalid path: %s", path)
+		}
+		sPath := sParts[1]
 		pi := openapi.PathItem{}
-		sPath := path
 		switch routeInfo.Method {
 		case http.MethodPost:
-			sPath, pi.Post = s.processBodyParams(path, routeInfo)
+			sPath, pi.Post = s.processBodyParams(sPath, routeInfo)
+			resPi, ok := sw.Paths.Paths[sPath]
+			if ok {
+				resPi.Post = pi.Post
+			} else {
+				resPi = pi
+			}
+			sw.Paths.Paths[sPath] = resPi
 		case http.MethodPatch:
-			sPath, pi.Patch = s.processBodyParams(path, routeInfo)
+			sPath, pi.Patch = s.processBodyParams(sPath, routeInfo)
+			resPi, ok := sw.Paths.Paths[sPath]
+			if ok {
+				resPi.Patch = pi.Patch
+			} else {
+				resPi = pi
+			}
+			sw.Paths.Paths[sPath] = resPi
 		case http.MethodPut:
-			sPath, pi.Put = s.processBodyParams(path, routeInfo)
+			sPath, pi.Put = s.processBodyParams(sPath, routeInfo)
+			resPi, ok := sw.Paths.Paths[sPath]
+			if ok {
+				resPi.Put = pi.Put
+			} else {
+				resPi = pi
+			}
+			sw.Paths.Paths[sPath] = resPi
 		case http.MethodGet:
-			sPath, pi.Get = s.processQueryParams(path, routeInfo)
+			sPath, pi.Get = s.processQueryParams(sPath, routeInfo)
+			resPi, ok := sw.Paths.Paths[sPath]
+			if ok {
+				resPi.Get = pi.Get
+			} else {
+				resPi = pi
+			}
+			sw.Paths.Paths[sPath] = resPi
 		case http.MethodDelete:
-			sPath, pi.Delete = s.processQueryParams(path, routeInfo)
+			sPath, pi.Delete = s.processQueryParams(sPath, routeInfo)
+			resPi, ok := sw.Paths.Paths[sPath]
+			if ok {
+				resPi.Delete = pi.Delete
+			} else {
+				resPi = pi
+			}
+			sw.Paths.Paths[sPath] = resPi
 		case http.MethodHead:
-			sPath, pi.Head = s.processQueryParams(path, routeInfo)
+			sPath, pi.Head = s.processQueryParams(sPath, routeInfo)
+			resPi, ok := sw.Paths.Paths[sPath]
+			if ok {
+				resPi.Head = pi.Head
+			} else {
+				resPi = pi
+			}
+			sw.Paths.Paths[sPath] = resPi
 		case http.MethodOptions:
-			sPath, pi.Options = s.processQueryParams(path, routeInfo)
+			sPath, pi.Options = s.processQueryParams(sPath, routeInfo)
+			resPi, ok := sw.Paths.Paths[sPath]
+			if ok {
+				resPi.Options = pi.Options
+			} else {
+				resPi = pi
+			}
+			sw.Paths.Paths[sPath] = resPi
 		}
-		sw.Paths.Paths[sPath] = pi
 	}
 	secDefs, err := s.processSecurityDefinitions()
 	if err != nil {

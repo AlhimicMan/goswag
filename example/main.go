@@ -34,11 +34,11 @@ func RegisterRoutes(group *wrapper.WrapGroup) {
 		APIKey:       &generator.APIKeyParams{In: "header", Name: "X-API-Key"},
 	}
 	hAuth := []generator.AuthType{authParams}
-	group.GET("/get/:id", generator.HandlerParameters{
+	group.GET("/:id", generator.HandlerParameters{
 		Summary: "Get user",
 		Auth:    hAuth,
 	}, users.GetUser)
-	group.GET("/get/:id/avatar", generator.HandlerParameters{
+	group.GET("/:id/avatar", generator.HandlerParameters{
 		Summary: "Get user avatar",
 		Auth:    hAuth,
 	}, users.GetUserAvatar)
@@ -51,15 +51,15 @@ func RegisterRoutes(group *wrapper.WrapGroup) {
 		Auth:       hAuth,
 		FileUpload: []generator.FileUploadParameters{additionalFilesUploadParams},
 	}, users.CreateUser)
-	group.POST("/update/:id", generator.HandlerParameters{
+	group.POST("/:id", generator.HandlerParameters{
 		Summary: "Update user",
 		Auth:    hAuth,
 	}, users.UpdateUser)
-	group.POST("/update/:id/avatar", generator.HandlerParameters{
+	group.POST("/:id/avatar", generator.HandlerParameters{
 		Summary: "Update user avatar",
 		Auth:    hAuth,
 	}, users.UpdateUserAvatar)
-	group.DELETE("/delete/:id", generator.HandlerParameters{
+	group.DELETE("/:id", generator.HandlerParameters{
 		Summary: "Delete user",
 		Auth:    hAuth,
 	}, users.DeleteUser)
